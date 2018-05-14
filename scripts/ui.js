@@ -1052,12 +1052,12 @@ define([
     }
     
     saveVisibility() {
-      localStorage[this.prefix + "_settings"] = JSON.stringify(this);
+      localStorage[this.storagePrefix + "_settings"] = JSON.stringify(this);
       return this;
     }
     
     loadVisibility() {
-      let key = this.prefix + "_settings";
+      let key = this.storagePrefix + "_settings";
       let ok = true;
       
       if (key in localStorage) {
@@ -1216,6 +1216,7 @@ define([
           
           set : function(val) {
             this2._path_set(path, val);
+            window.redraw_all();
           }
         });
         

@@ -5,6 +5,7 @@ define([
 
   //handle to module.  never access in code; for debug console use only.
   var _linear_algebra = undefined;
+  var exports = self.exports != undefined ? self.exports : {};
 
   if (window.define == undefined) { //node.js!
     window.define = function(depends, func) {
@@ -21,7 +22,6 @@ define([
   define([], function() {
     "use strict";
     
-    var exports = self.exports != undefined ? self.exports : {};
     _linear_algebra = exports;
     
     var temp_mats = exports.temp_mats = [];
@@ -68,21 +68,29 @@ define([
       return b;
     }
     
-    function Matrix(m, n) {
-      //console.log(Symbol.init)
-      Array.call(this, n == undefined ? m*m : m*n);
+    let Matrix = exports.Matrix = class Matrix extends Array {
+      constructor(m, n) {
+        //console.log(Symbol.init)
+        super(n !== undefined ? m*n : m*m);
+        
+        var length = n == undefined ? m*m : m*n;
+        
+        this.m = m;
+        this.n = n;
+        
+        this.length = length;
+        this.makeIdentity();
+      }
       
-      var length = n == undefined ? m*m : m*n;
+      fill(val, s, e) {
+        for (let i=s; i<e; i++) {
+          this[i] = val;
+        }
+        
+        return this;
+      }
       
-      this.m = m;
-      this.n = n;
-      
-      this.length = length;
-      this.makeIdentity();
-    }
-    
-    Matrix.prototype = merge(Object.create(Array.prototype), {
-      load : function(data) {
+      load(data) {
         if (data == undefined) { //this is allowed
           console.log("eck?");
           return this; 
@@ -106,9 +114,9 @@ define([
         }
         
         return this;
-      },
+      }
       
-      makeIdentity : function() {
+      makeIdentity() {
         var m = this.m, n = this.n;
         
         for (var i=0; i<this.length; i++) {
@@ -120,9 +128,9 @@ define([
         }
         
         return this;
-      },
+      }
       
-      toString : function(dec) {
+      toString(dec) {
         var m = this.m, n = this.n;
         
         if (dec == undefined)
@@ -170,9 +178,9 @@ define([
         }
         
         return ret;
-      },
+      }
       
-      determinant : function() {
+      determinant() {
         var m = this.m, n = this.n, ret=1;
         if(m != n) { throw new Error('numeric: det() only works on square matrices'); }
         
@@ -217,9 +225,9 @@ define([
             ret *= A[j*m+j];
         }
         return ret*A[j*m+j];
-      },
+      }
       
-      multiply : function(B) {
+      multiply(B) {
         var m = this.m, n = this.n;
         var bm = B.m, bn = B.n;
         
@@ -241,9 +249,9 @@ define([
         }
         
         return this;
-      },
+      }
       
-      transpose : function() {
+      transpose() {
         var m = this.m, n = this.n;
         var A = _get_temp_matrix(m, n).load(this);
         
@@ -254,9 +262,9 @@ define([
         }
         
         return this;
-      },
+      }
       
-      invert : function() {
+      invert() {
         //this.transpose();
         
         var m = this.m, n = this.n;
@@ -357,7 +365,7 @@ define([
         
         this.load(I);
       }
-    });
+    };
 
     function test() {
       var I = new Matrix(5, 5);
@@ -437,7 +445,7 @@ define([
       console.log(""+tm2);
       console.log(""+tm2.multiply(I));
     }
-    
-    return exports;
   });
+  
+  return exports;
 });
