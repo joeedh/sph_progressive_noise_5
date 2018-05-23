@@ -7,7 +7,7 @@ define([
   
   var exports = _app = {};
   
-  window.STARTUP_FILE_NAME = "startup_file_spha4";
+  window.STARTUP_FILE_NAME = "startup_file_spha5";
   
   var AppState = exports.AppState = class AppState extends events.EventHandler {
     report() {
@@ -67,8 +67,6 @@ define([
         window.redraw_all();
       });
 
-      this.gui.check("SIMPLE_MODE", "Solve Mode");
-      
       this.gui.button("load_image", "Load Test Image", () => {
         this.load_image().then((data) => {
             this.image = data;
@@ -107,11 +105,15 @@ define([
       cconst.TONE_CURVE = panel.curve("TONE_CURVE", "Tone Curve", cconst.TONE_CURVE).curve;
       
       panel = this.gui.panel("Settings2");
-      panel.slider("PREPOWER", "PrePower", 1, 0.001, 9.0, 0.0001, false, true);
-      panel.slider("RANGE", "Range", 255, 2, 255, 1, true, true);
-      panel.slider("PATH_DEGREE", "Path Degree", 4, 1, 8, 1, true, true);
-      panel.slider("PRESTEPS", "PreSteps", 16, 0, 1024, 1, true, true);
-      panel.slider("ADV_STEPS", "AdvSteps", 32, 0, 255, 1, true, true);
+      panel.slider("SPH_SPEED", "Speed", 1.0, 0.005, 16.0, 0.01, false, true);
+      panel.slider("SEARCHRAD", "Search Rad", 3.0, 0.1, 15.0, 0.01, false, true);
+
+      panel.slider("PARAM1", "Param1", 1, -1, 9.0, 0.0001, false, true);
+      panel.slider("PARAM2", "Param2", 1, -1, 9.0, 0.0001, false, true);
+      panel.slider("PARAM3", "Param3", 1, -1, 9.0, 0.0001, false, true);
+      panel.slider("PARAM4", "Param4", 1, -1, 9.0, 0.0001, false, true);
+      panel.slider("PARAM5", "Param5", 1, -1, 9.0, 0.0001, false, true);
+      panel.slider("PARAM6", "Param6", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("RADMUL", "Radius Factor", 0.8, 0.0, 1.0, 0.001, false, true);
       panel.slider("DV_DAMPING", "Damping", 1.0, 0.0, 1.0, 0.001, false, true);
       panel.slider("GENSTART", "GenStart", 0.05, 0.001, 0.5, 0.001, false, true);
@@ -119,20 +121,13 @@ define([
     
       panel = this.gui.panel("Settings1");
     
-      panel.check("ADV_SOLVE", "AdvancedSolve");
-      panel.check("UPDATE_START_COS", "UpdateStartCos");
-      
       panel.check("DRAW_TEST", "Draw Test");
       panel.slider("REPEAT", "Test Repeat", 5, 1, 45, 1, true, true);
       
       panel.slider("DISPLAY_LEVEL", "Display Level", 1.0, 0.0, 1.0, 0.001, false, true);
       panel.slider("STARTCO_BLEND", "Offset Blend", 1.0, 0.0, 1.0, 0.001, false, true);
       panel.slider("SOLVE_LEVEL", "Solve Level", 1.0, 0.0, 1.0, 0.001, false, true);
-      panel.slider("PULL_FACTOR", "Pull Factor", 1.0, 0.0, 1.0, 0.001, false, true);
-      panel.slider("PATH_SMOOTH_FACTOR", "Path Smoothing", 1.0, 0.0, 1.0, 0.001, false, true);
       
-      panel.slider("SPH_SPEED", "Speed", 1.0, 0.005, 16.0, 0.01, false, true);
-      panel.slider("SEARCHRAD", "Search Rad", 3.0, 0.1, 15.0, 0.01, false, true);
       //panel.slider("EXPONENT", "Exponent", 1.0, 0.001, 18.0, 0.001, false, true);
       
       panel = this.gui.panel("Draw Settings");
@@ -141,7 +136,6 @@ define([
       panel.check("SMALL_MASK", "Small Mask Mode");
       panel.check("XLARGE_MASK", "Extra Large Mask Mode");
       panel.check("SHOW_RADII", "Show Point Radius");
-      panel.check("SHOW_PATHS", "Show Paths");
       
       this.gui.load();
     }
@@ -201,55 +195,6 @@ define([
       
       input.click();
       return promise;
-    }
-    
-    save_smoothmask() {
-      let ps = this.sph.points;
-      
-      let pset = new smoothmask.PointSet(this.sph.dimen);
-      
-      for (let pi=0; pi<ps.length; pi += PTOT) {
-        let path = this.sph.getPath(pi, true);
-        
-        let gen = ps[pi+PGEN];
-        gen = 1.0 - cconst.TONE_CURVE.evaluate(1.0 - gen);
-
-        let p = new smoothmask.MaskPoint(pi/PTOT, gen, ps[pi+PR]); //, smoothmask.CurveTypes.LINEAR_NONUNIFORM);
-        path.fillMaskPoint(p);
-        //p.compress();
-        
-        pset.points.push(p);
-      }
-      
-      /*
-      let json = JSON.stringify(pset, (key, val) => {
-        if (typeof val == "number") {
-          let a = val.toFixed(5);
-          let b = val.toString();
-          
-          return a.length < b.length ? a : b;
-        }
-        
-        return val;
-      });//*/
-      
-      return pset;
-    }
-    
-    download_mask() {
-      let file = this.save_mask();
-      let blob = new Blob([file], {type : 'text/smooth-mask'});
-      let url = URL.createObjectURL(blob);
-      
-      let a = document.createElement("a");
-      a.setAttribute("href", url);
-      a.setAttribute("download", "smoothmask_" + this.sph.dimen + ".smask");
-      a.setAttribute("target", "_blank");
-
-      console.log("URL", url);
-      
-      a.click();
-      window.a = a;
     }
     
     save_mask_to_cache() {
@@ -360,53 +305,6 @@ define([
         mdata[i+3] = 255;
       }
       
-      if (cconst.SHOW_PATHS) {
-        let steps = 32, ds = 1.0 / steps;
-        
-        for (let i=0; i<ps.length; i += PTOT) {
-          let path = this.sph.getPath(i);
-          if (path === undefined) {
-            continue;
-          }
-          
-          let gen = ps[i+PGEN];
-          if (gen > cconst.DISPLAY_LEVEL)
-            continue;
-          
-          let r = this.sph.r*0.75*cconst.POINTSCALE;
-          let lastp = undefined;
-          
-          g.beginPath();
-          g.lineWidth = r*0.05;
-          
-          for (let s=0, j=0; j<steps; j++, s += ds) {
-            if (s < gen) {
-              continue;
-            }
-            
-            let p = path.evaluate(s);
-            
-            if (lastp !== undefined && p.vectorDistance(lastp) > 0.25) {
-              //sudden jump, probably caused by points wrapping around.
-              //during solve
-              
-              //for now, just break
-              break;
-            }
-            
-            if (lastp === undefined) {
-              g.moveTo(p[0], p[1]);
-            } else {
-              g.lineTo(p[0], p[1]);
-            }
-            
-            lastp = p;
-          }
-          
-          g.stroke();
-        }
-      }
-      
       let solve_limit = this.timer !== undefined ? this.sph.cur_t : cconst.SOLVE_LEVEL;
 
       let repeat = cconst.DRAW_TEST ? cconst.REPEAT : 1;
@@ -457,25 +355,6 @@ define([
           continue;
         }
         
-        let path = this.sph.getPath(i);
-        if (path !== undefined) {
-          let drawlvl;
-          
-          if (!cconst.DRAW_TEST) {
-            drawlvl = Math.min(solve_limit, cconst.DISPLAY_LEVEL);
-          } else {
-            drawlvl = 1.0 - f;
-          }
-          
-          let p = path.evaluate(drawlvl*0.999999);
-          
-          //x = Math.fract(p[0])/repeat+offx;
-          //y = Math.fract(p[1])/repeat+offy;
-          
-          x = p[0]/repeat + offx;
-          y = p[1]/repeat + offy;
-        }
-        
         x = ps[i+PSTARTX]/repeat + offx + (x - ps[i+PSTARTX]/repeat-offx) * cconst.STARTCO_BLEND;
         y = ps[i+PSTARTY]/repeat + offy + (y - ps[i+PSTARTY]/repeat-offy) * cconst.STARTCO_BLEND;
         
@@ -491,6 +370,8 @@ define([
           w = cconst.SIMPLE_MODE ? this.sph.cur_r : this.sph.r;
         }
         
+        if (cconst.DRAW_TEST)
+          w *= 2.0;
         w *= cconst.POINTSCALE;
         
         f = 1.0 - gen;
@@ -671,7 +552,7 @@ define([
         this.timer = window.setInterval(() => {
           let time = util.time_ms();
           
-          while (util.time_ms() - time < 50) {
+          while (util.time_ms() - time < 150) {
             //if (i > cconst.TIMER_STEPS) {
             //  window.clearInterval(this.timer);
             //  this.timer = undefined;

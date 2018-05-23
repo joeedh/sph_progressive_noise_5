@@ -346,7 +346,7 @@ define([
     function regen_hermite(steps) {
       console.log("building spline approx");
       
-      steps = steps == undefined ? 370 : steps;
+      steps = steps == undefined ? 120 : steps;
       
       this.hermite = new Array(steps);
       var table =this.hermite;
@@ -384,7 +384,7 @@ define([
       console.log("building basis functions");
       this.recalc = 0;
       
-      var steps = this.fastmode ? 64 : 512;
+      var steps = this.fastmode ? 64 : 128;
       
       this.basis_tables = new Array(this._ps.length);
       
