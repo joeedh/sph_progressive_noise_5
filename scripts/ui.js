@@ -500,7 +500,7 @@ define([
     },
 
     function inverse(y) {
-      let steps = 42;
+      let steps = 9;
       let ds = 1.0 / steps, s = 0.0;
       let best = undefined;
       let ret = undefined;

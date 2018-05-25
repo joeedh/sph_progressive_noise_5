@@ -1,8 +1,8 @@
 var _app = undefined; //for debugging purposes only.  don't write code with it
 
 define([
-  "util", "sph", "const", "events", "ui", "smoothmask"
-], function(util, sph, cconst, events, ui, smoothmask) {
+  "util", "sph", "const", "events", "ui", "smoothmask", "colors"
+], function(util, sph, cconst, events, ui, smoothmask, colors) {
   'use strict';
   
   var exports = _app = {};
@@ -107,13 +107,16 @@ define([
       panel = this.gui.panel("Settings2");
       panel.slider("SPH_SPEED", "Speed", 1.0, 0.005, 16.0, 0.01, false, true);
       panel.slider("SEARCHRAD", "Search Rad", 3.0, 0.1, 15.0, 0.01, false, true);
+      panel.slider("CMYK_SEARCHRAD", "CMYKSearchRad", 3.0, 0.1, 15.0, 0.01, false, true);
 
+      panel.slider("GENSTEPS", "IntensitySteps", 513, 1, 4096, false, true);
       panel.slider("PARAM1", "Param1", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("PARAM2", "Param2", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("PARAM3", "Param3", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("PARAM4", "Param4", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("PARAM5", "Param5", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("PARAM6", "Param6", 1, -1, 9.0, 0.0001, false, true);
+      panel.slider("PARAM7", "Param7", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("RADMUL", "Radius Factor", 0.8, 0.0, 1.0, 0.001, false, true);
       panel.slider("DV_DAMPING", "Damping", 1.0, 0.0, 1.0, 0.001, false, true);
       panel.slider("GENSTART", "GenStart", 0.05, 0.001, 0.5, 0.001, false, true);
@@ -122,6 +125,11 @@ define([
       panel = this.gui.panel("Settings1");
     
       panel.check("DRAW_TEST", "Draw Test");
+      panel.check("USE_IMAGE", "Use Image");
+      panel.check("DRAW_COLORS", "Draw Colors");
+      panel.check("IMAGE_COLORS", "Image Colors");
+      panel.check("DRAW_INTENSITY", "Draw Intensity");
+      
       panel.slider("REPEAT", "Test Repeat", 5, 1, 45, 1, true, true);
       
       panel.slider("DISPLAY_LEVEL", "Display Level", 1.0, 0.0, 1.0, 0.001, false, true);
@@ -297,7 +305,6 @@ define([
       g.stroke();
       
       let ps = this.sph.points;
-      g.beginPath();
       
       let mdata = this.mask.data;
       mdata.fill(255, 0, mdata.length);
@@ -313,8 +320,27 @@ define([
       for (let ry=0; ry<repeat; ry++) {
       
       let offx = rx/repeat, offy = ry/repeat;
-      for (let i=0; i<ps.length; i += PTOT) {
-        let x = ps[i], y = ps[i+1], gen = ps[i+PGEN], r = ps[i+PR], val = ps[i+PVAL];
+      
+      let cmyk = [[0, 1, 1], [1, 0, 1], [1, 1, 0], [0, 0, 0]];
+      
+      g.beginPath();
+      for (let _i=0; _i<ps.length*4; _i += PTOT) {
+        let i = _i % ps.length;
+        let curcolor = ~~(_i / ps.length);
+        
+        if (curcolor > 0 && !cconst.DRAW_COLORS) {
+          break;
+        }
+        
+        curcolor = 3 - curcolor;
+        
+        let x = ps[i], y = ps[i+1], gen = ps[i+POGEN], r = ps[i+PR], val = ps[i+POGEN], color=ps[i+PCOLOR];
+        
+        if (cconst.DRAW_COLORS && color != curcolor) {
+          continue;
+        }
+        
+        color = cmyk[color];
         
         if (cconst.DRAW_TEST) {
             x = ps[i+PSTARTX];
@@ -324,9 +350,9 @@ define([
         x = x/repeat + offx;
         y = y/repeat + offy;
 
-        let f = x;
+        let f;
         
-        if (cconst.DRAW_TEST && this.image !== undefined) {
+        if (cconst.DRAW_TEST && this.image !== undefined && cconst.USE_IMAGE) {
             let idata = this.image.data;
             let size = Math.max(this.image.width, this.image.height);
 
@@ -341,8 +367,20 @@ define([
             let s = (idata[idx]/255 + idata[idx+1]/255 + idata[idx+2]/255) / 3.0;
 
             f = s;
+            
+            if (cconst.IMAGE_COLORS && cconst.DRAW_COLORS) {
+              let r = idata[idx]/255, g = idata[idx+1]/255, b = idata[idx+2]/255;
+              
+              let c = colors.rgb_to_cmyk(r, g, b);
+              f = 1.0 - c[ps[i+PCOLOR]];
+            }
+        } else {
+          //make little pyramid graphic
+          f = Math.fract(x * Math.floor(1 + y*9));
         }
-        
+         
+        //f = 1.0 - cconst.TONE_CURVE.inverse(1.0 - f);
+
         if (cconst.IMAGE_CURVE !== undefined && cconst.IMAGE_CURVE.evaluate !== undefined) {
             f = cconst.IMAGE_CURVE.evaluate(f);
         }
@@ -390,7 +428,7 @@ define([
         
         let mf = 0.0; //mgen;
         
-        let f1 = ~~(val*255*3);
+        let f1 = ~~(gen*255*2);
         let f2=0, f3 = 0;
         
         if (f1 > 255) {
@@ -405,7 +443,7 @@ define([
         }
         //f1=f2=f3=~~(val*255);
         //f1=f2=f3=~~((1.0-mf)*255);
-        f1=~~((1.0-Math.sqrt(mf))*255), f2=f3=0.0;
+        //f1=~~((1.0-Math.sqrt(mf))*255), f2=f3=0.0;
         
         mf = ~~(mf*240 + 15);
         mdata[idx] = mf;
@@ -415,12 +453,15 @@ define([
         g.beginPath();
         g.moveTo(x, y);
         g.arc(x, y, w/repeat, -Math.PI, Math.PI);
-        if (cconst.DRAW_COLORS && !cconst.DRAW_TEST) {
+        if (cconst.DRAW_INTENSITY && !cconst.DRAW_TEST) {
           
           g.fillStyle = "rgba("+f1+","+f2+","+f3+","+alpha+")";
+        } else if (cconst.DRAW_COLORS) {
+          g.fillStyle = `rgba(${~~(color[0]*255)},${~~(color[1]*255)},${~~(color[2]*255)},1.0)`;
         } else {
           g.fillStyle = "black";
         }
+        
         g.fill();
         
         if (cconst.SHOW_RADII) {
@@ -430,7 +471,7 @@ define([
           g.moveTo(x, y);
           g.arc(x, y, r, -Math.PI, Math.PI);
           
-          if (cconst.DRAW_COLORS && !cconst.DRAW_TEST) {
+          if (cconst.DRAW_INTENSITY && !cconst.DRAW_TEST) {
             g.fillStyle = "rgba("+f1+","+f2+","+f3+","+(0.1*alpha)+")";
           } else {
             g.fillStyle = "black";
@@ -538,7 +579,7 @@ define([
           break;
         case 75: //kkey
           //this.sph.smoothPaths(cconst, 1.0, cconst.SmoothModes.POLYFIT);
-          this.sph.compressPaths(cconst);
+          //this.sph.compressPaths(cconst);
           window.redraw_all();
           break;
         default:
@@ -563,7 +604,7 @@ define([
             window.redraw_all();
             //this.step();
             if (i % 8 == 0) {
-              this.report(i, "totbase", this.sph.totbase);
+              this.report(i, "totbase", this.sph.totbase, "ct", this.sph.ct);
             }
             i++;
           }
