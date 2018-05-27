@@ -44,6 +44,20 @@ define([
     //throw new Error("module load error");
   }
   
+  function calcradius(gen, maxgen, ctx) {
+    let b = ctx.RADMUL / Math.sqrt(1 + maxgen);
+    let a = b*ctx.MAX_SCALE;
+    
+    gen = Math.min(Math.max(gen, 0.0), 1.0)*0.99999999;
+    if (ctx.RADIUS_CURVE !== undefined) {
+      gen = ctx.RADIUS_CURVE.evaluate(gen);
+    }
+
+    return a + (b - a)*gen;
+    
+    return ctx.RADMUL / Math.sqrt(1 + gen*maxgen);
+  }
+  
   let Solver = exports.Solver = class Solver {
     constructor(dimen) {
       this.reset(dimen);
@@ -80,13 +94,11 @@ define([
     }
     
     throw() {
-      let totpoint = this.dimen*this.dimen*0.95;
+      let totpoint = Math.ceil(this.dimen*this.dimen*0.95);
       let ps = this.points;
       
       let genstart = totpoint*cconst.GENSTART;
-      let maxgen = totpoint + genstart;
       
-      this.maxgen = maxgen;
       let dimen2 = Math.floor(Math.sqrt(totpoint));
       this.r = undefined;
       
@@ -95,19 +107,24 @@ define([
       let cdf = new Float64Array(1024);
 
       for (let i=0; i<totpoint; i++) {
-        //let i2 = ~~(Math.random()*totpoint*0.9999);
-        //let ix = i2 % dimen2, iy = ~~(i2 / dimen2);
-        let x = util.random(), y = util.random();
-        //let x = ix/dimen2, y = iy/dimen2;
-        //x += (util.random()-0.5)/dimen2/3.0;
-        //y += (util.random()-0.5)/dimen2/3.0;
+        let ix = i % dimen2, iy = ~~(i / dimen2);
+        let x = ix/dimen2, y = iy/dimen2;
+
+        //let x = util.random(), y = util.random();
+
+        let rfac = 1.5;
         
+        x += (util.random()-0.5)/dimen2*rfac;
+        y += (util.random()-0.5)/dimen2*rfac;
+        x = Math.fract(x);
+        y = Math.fract(y);
+
         let pi = ps.length;
         for (let j=0; j<PTOT; j++) {
           ps.push(0.0);
         }
         
-        let gen = i / totpoint;
+        let gen = Math.fract(ix*3.3234 + iy*0.539 + util.random()*0.05);
         
         gen = Math.max(gen-cconst.GENSTART, 0)/(1.0 - cconst.GENSTART);
         ps[pi+POGEN] = gen;
@@ -132,16 +149,18 @@ define([
         cdf[i] += cdf[i-1];
       }
 
+      let maxgen = cdf[cdf.length-1];
+      this.maxgen = maxgen;
+            
       for (let pi=0; pi<ps.length; pi += PTOT) {
           let gen = ps[pi+PGEN];
           let ci = ~~(gen*cdf.length*0.9999999);
 
-          let r = cconst.RADMUL / Math.sqrt(1 + cdf[ci]);
+          let r = calcradius(cdf[ci]/maxgen, maxgen, cconst);
           ps[pi+PR] = r;
       }
 
-      //XXX get rid of prior radius calculations 
-      this.r = this.cur_r = cconst.RADMUL / Math.sqrt(this.points.length/PTOT);
+      this.r = this.cur_r = calcradius(1.0, maxgen, cconst);
     }
     
     makeKDTree(ctx) {
@@ -369,7 +388,6 @@ define([
         sumcolortot += 1.0;
       }
 
-      let r = this.cur_r = ctx.RADMUL / Math.sqrt(tot);
       let fac = ctx.SPH_SPEED*0.5;// * 0.45;
       
       for (let pi=0; pi<ps.length; pi += PTOT) {
@@ -457,7 +475,8 @@ define([
         swaps[i].sort();
         bins[i].sort();
       }
-
+      
+      //for (let )
       let steplen = swaps[0].length + swaps[1].length + swaps[2].length + swaps[3].length;
       for (let step=0; step<steplen; step++) {
         let i = ~~(Math.random()*3.999999);

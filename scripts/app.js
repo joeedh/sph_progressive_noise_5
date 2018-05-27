@@ -57,7 +57,7 @@ define([
     
     makeGUI() {
       if (this.gui !== undefined) {
-        this.gui.destroy();
+        return; //this.gui.destroy();
       }
       
       this.gui = new ui.UI(STARTUP_FILE_NAME + "_", cconst);
@@ -98,6 +98,9 @@ define([
       panel = this.gui.panel("SPH Curve");
       cconst.SPH_CURVE = panel.curve("SPH_CURVE", "Filter Curve", cconst.SPH_CURVE).curve;
 
+      panel = this.gui.panel("Radius Curve");
+      cconst.RADIUS_CURVE = panel.curve("RADIUS_CURVE", "Radius Curve", cconst.RADIUS_CURVE).curve;
+
       panel = this.gui.panel("Image Curve");
       cconst.IMAGE_CURVE = panel.curve("IMAGE_CURVE", "Image Curve", cconst.IMAGE_CURVE).curve;
       
@@ -107,6 +110,7 @@ define([
       panel = this.gui.panel("Settings2");
       panel.slider("SPH_SPEED", "Speed", 1.0, 0.005, 16.0, 0.01, false, true);
       panel.slider("SEARCHRAD", "Search Rad", 3.0, 0.1, 15.0, 0.01, false, true);
+      panel.slider("MAX_SCALE", "MaxRadScale", 3.0, 0.1, 15.0, 0.01, false, true);
       panel.slider("CMYK_SEARCHRAD", "CMYKSearchRad", 3.0, 0.1, 15.0, 0.01, false, true);
 
       panel.slider("GENSTEPS", "IntensitySteps", 513, 1, 4096, false, true);
@@ -126,6 +130,7 @@ define([
     
       panel.check("DRAW_TEST", "Draw Test");
       panel.check("USE_IMAGE", "Use Image");
+      panel.check("APPLY_TONING", "Apply Toning");
       panel.check("DRAW_COLORS", "Draw Colors");
       panel.check("IMAGE_COLORS", "Image Colors");
       panel.check("DRAW_INTENSITY", "Draw Intensity");
@@ -334,8 +339,9 @@ define([
         
         curcolor = 3 - curcolor;
         
-        let x = ps[i], y = ps[i+1], gen = ps[i+POGEN], r = ps[i+PR], val = ps[i+POGEN], color=ps[i+PCOLOR];
-        
+        let x = ps[i], y = ps[i+1], r = ps[i+PR], val = ps[i+POGEN], color=ps[i+PCOLOR];
+        let gen = cconst.APPLY_TONING ? ps[i+POGEN] : ps[i+PGEN];
+
         if (cconst.DRAW_COLORS && color != curcolor) {
           continue;
         }
@@ -496,11 +502,17 @@ define([
     }
     
     save() {
-      return JSON.stringify(this);
+      localStorage[STARTUP_FILE_NAME] = JSON.stringify(this);
     }
     
     load(str) {
-      this.loadJSON(JSON.parse(str));
+      try {
+        this.loadJSON(JSON.parse(str));
+      } catch(error) {
+        util.print_stack(error);
+        console.warn("Failed to load start up file!");
+      }
+      
       this.reset();
       this.gui.update();
       
@@ -524,7 +536,27 @@ define([
     }
     
     loadJSON(obj) {
+      let cpy = cconst.copy();
       cconst.loadJSON(obj.consts);
+      
+      for (let k in obj.consts) {
+        let v = obj.consts[k];
+
+        if (k.search("CURVE") >= 0 && k != "CURVE_DEFAULTS") {
+          let curve = cpy[k];
+          
+          if (curve === undefined || !(curve instanceof ui.Curve)) {
+            curve = new ui.Curve();
+          }
+
+          if (v !== undefined) {
+            curve.loadJSON(v);
+            curve.update();
+          }
+
+          cconst[k] = curve;
+        }
+      }
       
       window.redraw_all();
       return this;
@@ -550,8 +582,7 @@ define([
       
       if (util.time_ms() - this.last_save > 900) {
         //console.log("autosaving");
-        localStorage[STARTUP_FILE_NAME] = this.save();
-        
+        _appstate.save();
         this.last_save = util.time_ms();
       }
     }
