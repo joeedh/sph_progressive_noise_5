@@ -1,11 +1,11 @@
-let _smoothmask = undefined;
+//let _smoothmask = undefined;
 
 define([
-  "util"
+  "./util"
 ], function(util) {
   "use strict";
   
-  let exports = _smoothmask = {};
+  let exports = {};
   
   let CurveTypes = exports.CurveTypes = {
     LINEAR            : 0,

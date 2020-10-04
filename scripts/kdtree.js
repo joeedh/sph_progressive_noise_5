@@ -2,7 +2,7 @@ var _kdtree = undefined;
 
 //'ni' is shorthand for 'nodeindex', a point into the typed array data structure
 
-define(["util", "vectormath"], function(util, vectormath) {
+define(["./util", "./vectormath"], function(util, vectormath) {
   "use strict";
   
   var exports = _kdtree = {};

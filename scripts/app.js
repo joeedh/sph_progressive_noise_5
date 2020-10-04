@@ -1,7 +1,7 @@
 var _app = undefined; //for debugging purposes only.  don't write code with it
 
 define([
-  "util", "sph", "const", "events", "ui", "smoothmask", "colors"
+  "./util", "./sph", "./const", "./events", "./ui", "./smoothmask", "./colors"
 ], function(util, sph, cconst, events, ui, smoothmask, colors) {
   'use strict';
   
@@ -10,6 +10,15 @@ define([
   window.STARTUP_FILE_NAME = "startup_file_spha5";
   
   var AppState = exports.AppState = class AppState extends events.EventHandler {
+    loadStartupImage() {
+      if (this.image === undefined && "startup_image_bn4" in localStorage) {
+        _appstate.load_image(localStorage.startup_image_bn4).then((idata) => {
+          _appstate.image = idata;
+          window.redraw_all();
+        });
+      }
+    }
+    
     report() {
       let str = "";
       
@@ -36,7 +45,10 @@ define([
     constructor() {
       super();
       
-      this.reportbuf = new Array(5);
+      this.shuffle_f_i = 0.0;
+      this.shuffle_rfac = 1.0;
+      
+      this.reportbuf = new Array(7);
       
       this.mask_canvas = document.createElement("canvas");
       this.mask_g = this.mask_canvas.getContext("2d");
@@ -46,7 +58,7 @@ define([
       this.g = this.canvas.getContext("2d");
       
       this.points = [];
-      this.sph = new sph.Solver();
+      this.sph = new sph.SPH();
       this.sph.points = this.points;
       
       this.makeGUI();
@@ -107,13 +119,32 @@ define([
       panel = this.gui.panel("Tone Curve");
       cconst.TONE_CURVE = panel.curve("TONE_CURVE", "Tone Curve", cconst.TONE_CURVE).curve;
       
+      panel = this.gui.panel("Param Solver");
+      panel.slider("SOLVER_SEARCHRAD", "UniformSearchRad", 1.0, 0.005, 16.0, 0.001, false, true);
+      panel.slider("SOLVER_SPEED", "UniformSpeed", 1.0, 0.005, 16.0, 0.001, false, true);
+      panel.slider("SOLVER_STEPS", "UniformSlvSteps", 15, 1, 128, true, false);
+      panel.slider("SOLVER_RANGE", "Range", 24, 1, 512, true, false);
+      panel.slider("SOLVER_NORMAL_STEPS", "NormalSlvSteps", 15, 1, 128, true, false);
+      panel.slider("SOLVER_STARTSPEED_THRESH", "SpeedThresh", 1.0, 0.005, 5.0, 0.0001, false, true);
+      
+      let spanel = panel.panel("Paramaters");
+      spanel.slider("SOLVER_PARAM_MIN", "ParamMin", 0, 1, 7, true, false);
+      spanel.slider("SOLVER_PARAM_MAX", "ParamMax", 7, 0, 7, true, false);
+      spanel.slider("SOLVER_PARAM_WEIGHT", "ParamW", 1, 0, 1, 0.00001, false, false);
+      spanel.slider("SOLVER_SEARCHRAD_WEIGHT", "SearchRadW", 1, 0, 1, 0.00001, false, false);
+      spanel.slider("SOLVER_MAXSCALE_WEIGHT", "MaxScaleW", 1, 0, 1, 0.00001, false, false);
+      spanel.slider("SOLVER_RANDFAC", "RandFac", 1, 0.0, 10, 0.00001, false, false);
+      spanel.slider("SOLVER_RANDSEED", "RandSeed", 1, 0.001, 10, 0.00001, false, false);
+      spanel.check("SOLVER_IN_SERIES", "One At A Time");
+      
       panel = this.gui.panel("Settings2");
-      panel.slider("SPH_SPEED", "Speed", 1.0, 0.005, 16.0, 0.01, false, true);
-      panel.slider("SEARCHRAD", "Search Rad", 3.0, 0.1, 15.0, 0.01, false, true);
-      panel.slider("MAX_SCALE", "MaxRadScale", 3.0, 0.1, 15.0, 0.01, false, true);
-      panel.slider("CMYK_SEARCHRAD", "CMYKSearchRad", 3.0, 0.1, 15.0, 0.01, false, true);
+      panel.slider("SPH_SPEED", "Speed", 1.0, 0.005, 16.0, 0.001, false, true);
+      panel.slider("SEARCHRAD", "Search Rad", 3.0, 0.1, 15.0, 0.001, false, true);
+      panel.slider("MAX_SCALE", "MaxRadScale", 3.0, 0.1, 15.0, 0.001, false, true);
+      panel.slider("CMYK_SEARCHRAD", "CMYKSearchRad", 3.0, 0.1, 15.0, 0.001, false, true);
 
       panel.slider("GENSTEPS", "IntensitySteps", 513, 1, 4096, false, true);
+      panel.slider("RANDFAC", "Rand Fac", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("PARAM1", "Param1", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("PARAM2", "Param2", 1, -1, 9.0, 0.0001, false, true);
       panel.slider("PARAM3", "Param3", 1, -1, 9.0, 0.0001, false, true);
@@ -233,6 +264,10 @@ define([
     }
 
     reset() {
+      //window._last_error = undefined;
+      this.shuffle_f_i = 0;
+      this.shuffle_rfac = 1.0;
+      
       let dimen;
       let mscale;
       let msize;
@@ -293,13 +328,13 @@ define([
       g.clearRect(0, 0, this.canvas.width, this.canvas.height);
       
       let w = this.canvas.width, h = this.canvas.height;
-      let scale = w*0.5;
+      let scale2 = 0.4, scale = w*scale2;
       
       g.save();
       
-      g.scale(w*0.5, h*0.5);
+      g.scale(w*scale2, h*scale2);
       
-      g.translate(0.25, 0.25);
+      g.translate(0.25, 0.05);
       g.scale(1.0, w/h);
       
       g.fillStyle = g.strokeStyle = "black";
@@ -321,12 +356,18 @@ define([
 
       let repeat = cconst.DRAW_TEST ? cconst.REPEAT : 1;
       
+      repeat = Math.ceil(repeat / this.sph.dimen * 16);
+      
       for (let rx=0; rx<repeat; rx++) {
       for (let ry=0; ry<repeat; ry++) {
       
       let offx = rx/repeat, offy = ry/repeat;
       
       let cmyk = [[0, 1, 1], [1, 0, 1], [1, 1, 0], [0, 0, 0]];
+      
+      if (cconst.DRAW_TEST && cconst.USE_IMAGE && !this.image) {
+        this.loadStartupImage();
+      }
       
       g.beginPath();
       for (let _i=0; _i<ps.length*4; _i += PTOT) {
@@ -339,7 +380,7 @@ define([
         
         curcolor = 3 - curcolor;
         
-        let x = ps[i], y = ps[i+1], r = ps[i+PR], val = ps[i+POGEN], color=ps[i+PCOLOR];
+        let x = ps[i], y = ps[i+1], r = ps[i+PR], val = ps[i+POGEN], color=ps[i+PCLR];
         let gen = cconst.APPLY_TONING ? ps[i+POGEN] : ps[i+PGEN];
 
         if (cconst.DRAW_COLORS && color != curcolor) {
@@ -378,7 +419,7 @@ define([
               let r = idata[idx]/255, g = idata[idx+1]/255, b = idata[idx+2]/255;
               
               let c = colors.rgb_to_cmyk(r, g, b);
-              f = 1.0 - c[ps[i+PCOLOR]];
+              f = 1.0 - c[ps[i+PCLR]];
             }
         } else {
           //make little pyramid graphic
@@ -546,7 +587,8 @@ define([
           let curve = cpy[k];
           
           if (curve === undefined || !(curve instanceof ui.Curve)) {
-            curve = new ui.Curve();
+            curve = new ui.Curve(k);
+            curve.setting_id = undefined;
           }
 
           if (v !== undefined) {
@@ -588,7 +630,8 @@ define([
     }
     
     on_keydown(e) {
-      console.log(e.keyCode);
+      console.log("keycode", e.keyCode);
+      //this.report("keycode", e.keyCode);
       
       if (e.ctrlKey || e.shiftKey || e.altKey || e.commandKey)
         return;
@@ -605,12 +648,73 @@ define([
           window.redraw_all();
           break;
         case 76: //lkey
-          this.sph.jitter();
+          this.report("Error:", this.sph.calcError(cconst, false, false).toFixed(5));
           window.redraw_all();
           break;
         case 75: //kkey
-          //this.sph.smoothPaths(cconst, 1.0, cconst.SmoothModes.POLYFIT);
-          //this.sph.compressPaths(cconst);
+          if (this.stimer !== undefined) {
+            window.clearInterval(this.stimer);
+            this.stimer = undefined;
+          } else {
+            let startps = this.sph.points.slice(0, this.sph.points.length);
+            let iter = this.sph.shuffleGen(cconst, _appstate.shuffle_rfac, true, true);
+            let lastval;
+
+            this.stimer = window.setInterval(() => {
+              let time = util.time_ms();
+
+              while (util.time_ms() - time < 450) {
+                let ret = iter.next();
+                
+                if (ret.done) {
+                  let fi = ~~(_appstate.shuffle_f_i/(_appstate.shuffle_rfac < 0.7 ? 4 : 6));
+                  let rf = Math.exp(-fi*0.0625*0.75);
+                  
+                  if (rf < 0.0135) {
+                    _appstate.shuffle_f_i = 0;
+                  } else {
+                    _appstate.shuffle_f_i++;
+                  }
+                  
+                  //rf = rf*(1.0 - 0.0125) + 0.0125;
+                  
+                  rf = _appstate.shuffle_rfac = window._last_error === undefined ? 0.0 : rf;
+                  
+                  //window.clearInterval(this.stimer);
+                  //this.stimer = undefined;
+
+                  let best = window._last_error !== undefined ? window._last_error : NaN;
+                  
+                  console.log("Final mask error:", lastval.toFixed(5));
+                  this.report("Final mask error: " + lastval.toFixed(3) + ", Best error: " + best.toFixed(3));
+                  this.report("rf: " + rf.toFixed(5));
+                  
+                  if (window._last_error !== undefined && lastval < window._last_error) {
+                    window._last_error = lastval;
+                    cconst.loadJSON(window.shuffleconfig);
+                    
+                    cconst.SPH_SPEED = window.shufflespeed;
+                    
+                    _appstate.save();
+                    _appstate.gui.update();
+                  } else if (window._last_error === undefined) {
+                    window._last_error = lastval;
+                    this.sph.points = startps;
+                  }
+                  
+                  
+                  iter = this.sph.shuffleGen(cconst, _appstate.shuffle_rfac, true, true);
+                  lastval = undefined;
+                  
+                  return;
+                } else {
+                  lastval = ret.value;
+                }
+              }
+
+              window.redraw_all();
+            }, 100)
+          }
           window.redraw_all();
           break;
         default:
@@ -685,13 +789,6 @@ define([
       //make base file
       console.log("started!");
       window.redraw_all();
-    }
-    
-    if ("startup_image_bn4" in localStorage) {
-      _appstate.load_image(localStorage.startup_image_bn4).then((idata) => {
-        _appstate.image = idata;
-        window.redraw_all();
-      });
     }
     
     window.setInterval(function() {

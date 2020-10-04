@@ -1,7 +1,7 @@
 var _colors = undefined;
 
 define([
-  'util', 'const'
+  './util', './const'
 ], function(util, cconst) {
   'use strict';
   

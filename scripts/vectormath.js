@@ -2,7 +2,7 @@
 var _vectormath = undefined;
 
 define([
-  "util"
+  "./util"
 ], function(util) {
   "use strict";
 
